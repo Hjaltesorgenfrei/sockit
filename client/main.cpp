@@ -12,10 +12,11 @@
 #include <cstring>
 #include <iostream>
 #include <asio.hpp>
+#include <packets.hpp>
 
 using asio::ip::udp;
 
-enum { max_length = 1024 };
+enum { max_length = sizeof(Packet) };
 
 int main(int argc, char* argv[])
 {
@@ -36,18 +37,26 @@ int main(int argc, char* argv[])
       resolver.resolve(udp::v4(), argv[1], argv[2]);
 
     std::cout << "Enter message: ";
-    char request[max_length];
-    std::cin.getline(request, max_length);
-    size_t request_length = std::strlen(request);
-    s.send_to(asio::buffer(request, request_length), *endpoints.begin());
+    char requestTxt[max_length];
+    std::cin.getline(requestTxt, max_length);
+    size_t request_length = std::strlen(requestTxt);
+    Packet request;
+    request.type = PacketType::PRINT;
+    std::memcpy(request.data, requestTxt, request_length);
+    char requestBuffer[max_length];
+    requestBuffer[0] = static_cast<char>(request.type);
+    std::memcpy(requestBuffer + 1, request.data, sizeof(request.data));
+    s.send_to(asio::buffer(requestBuffer, request_length), *endpoints.begin());
 
     char reply[max_length];
     udp::endpoint sender_endpoint;
     size_t reply_length = s.receive_from(
         asio::buffer(reply, max_length), sender_endpoint);
-    std::cout << "Reply is: ";
-    std::cout.write(reply, reply_length);
-    std::cout << "\n";
+    if (reply[0] == static_cast<char>(PacketType::PRINT_ACK)) {
+        std::cout << "Reply is: ";
+        std::cout.write(reply + 1, reply_length - 1);
+        std::cout << "\n";
+    }
   }
   catch (std::exception& e)
   {
