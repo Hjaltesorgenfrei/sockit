@@ -1,0 +1,3 @@
+https://codereview.stackexchange.com/questions/124141/c-udp-server-for-a-game
+
+Create some sort of session that keeps track of who is connected.
