@@ -18,8 +18,8 @@ using asio::ip::udp;
 class server
 {
 public:
-  server(asio::io_context& io_context, short port)
-    : _socket(io_context, udp::endpoint(udp::v4(), port))
+  server(asio::io_context &io_context, short port)
+      : _socket(io_context, udp::endpoint(udp::v4(), port))
   {
     do_receive();
   }
@@ -32,48 +32,55 @@ public:
         {
           if (!ec && bytes_recvd > 0)
           {
-            if (_recieveData[0] == static_cast<char>(PacketType::PRINT)) {
-                std::cout << "Received: " << _recieveData << std::endl;
-                _recieveData[0] = static_cast<char>(PacketType::PRINT_ACK);
-            }
-            Packet recieved = { PacketType::PRINT, bytes_recvd - 1, {0} };
-            char answer[] = "Hello from server! You sent: ";
-            Packet response = { PacketType::PRINT_ACK, sizeof(answer) + , {0} };
-            std::memcpy(response.data, answer, sizeof(answer));
-            _sendData[0] = static_cast<char>(response.type);
-            // Add size
-            std::memcpy(_sendData + offsetof(Packet, length), &response.length, sizeof(response.length));
-            std::memcpy(_sendData + offsetof(Packet, data), response.data, sizeof(response.data));
-            // Add orginal data to response
-            std::memcpy(_sendData + offsetof(Packet, data) + sizeof(response.data), _recieveData + 1, bytes_recvd - 1);
-            do_send(sizeof(Packet));
+            Packet* packet = (Packet *)_recieveData;
+            handle_packet(packet);
           }
-          else
-          {
-            do_receive();
-          }
+          do_receive();
         });
   }
 
-  void do_send(std::size_t length)
+  void handle_packet(Packet *packet)
   {
+    std::cout << "Received packet: " << packet_type_string(packet->type) << std::endl;
+    switch (packet->type)
+    {
+      case PACKET_TYPE_CONNECTION_REQUEST:
+      {
+        PacketConnectionRequest *request = (PacketConnectionRequest *)packet;
+        std::cout << "Connection Request: " << request->client_guid << std::endl;
+        std::cout << "Connection Sequence: " << request->connect_sequence << std::endl;
+        PacketConnectionAccepted response;
+        response.client_guid = request->client_guid;
+        response.connect_sequence = request->connect_sequence + 1;
+        do_send(sizeof(PacketConnectionAccepted), response);
+        break;
+      }
+    }
+  }
+
+  void do_send(std::size_t length, Packet &packet)
+  {
+    std::shared_ptr<std::vector<char>> data = std::make_shared<std::vector<char>>(length);
+    memcpy(data->data(), &packet, length);
     _socket.async_send_to(
-        asio::buffer(_sendData, length), _senderEndpoint,
-        [this](std::error_code /*ec*/, std::size_t /*bytes_sent*/)
+        asio::buffer(data->data(), length), _senderEndpoint,
+        [data](std::error_code /*ec*/, std::size_t /*bytes_sent*/)
         {
-          do_receive();
         });
   }
 
 private:
   udp::socket _socket;
   udp::endpoint _senderEndpoint;
-  enum { max_length = sizeof(Packet) };
+  enum
+  {
+    max_length = 1024
+  };
   char _recieveData[max_length];
   char _sendData[max_length];
 };
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
   try
   {
@@ -89,10 +96,11 @@ int main(int argc, char* argv[])
 
     io_context.run();
   }
-  catch (std::exception& e)
+  catch (std::exception &e)
   {
     std::cerr << "Exception: " << e.what() << "\n";
   }
 
+  std::cout << "Server Exited" << std::endl;
   return 0;
 }
