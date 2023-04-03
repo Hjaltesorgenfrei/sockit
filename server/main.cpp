@@ -18,11 +18,11 @@ using asio::ip::udp;
 
 struct Connection
 {
-  std::shared_ptr<udp::endpoint> endpoint;
+  udp::endpoint endpoint;
   uint64_t guid;
 };
 
-typedef std::function<bool(Packet*, std::shared_ptr<udp::endpoint>)> handle_func;
+typedef std::function<bool(Packet*, udp::endpoint)> handle_func;
 struct Handler {
   PacketType type;
   handle_func handler;
@@ -34,7 +34,7 @@ public:
   server(asio::io_context &io_context, short port)
       : _socket(io_context, udp::endpoint(udp::v4(), port))
   {
-    add_handler(PACKET_TYPE_CONNECTION_REQUEST, [this](Packet* packet, std::shared_ptr<udp::endpoint> senderEndpoint) {
+    add_handler(PACKET_TYPE_CONNECTION_REQUEST, [this](Packet* packet, udp::endpoint senderEndpoint) {
       PacketConnectionRequest *request = (PacketConnectionRequest *)packet;
         std::cout << "Connection Request: " << request->client_guid << std::endl;
         std::cout << "Connection Sequence: " << request->connect_sequence << std::endl;
@@ -63,10 +63,10 @@ public:
 
   void do_receive()
   {
-    auto senderEndpoint = std::make_shared<udp::endpoint>();
+    udp::endpoint senderEndpoint;
     _socket.async_receive_from(
-        asio::buffer(_receiveData, max_length), *senderEndpoint,
-        [this, senderEndpoint](std::error_code ec, std::size_t bytes_recvd)
+        asio::buffer(_receiveData, max_length), senderEndpoint,
+        [this, &senderEndpoint](std::error_code ec, std::size_t bytes_recvd)
         {
           if (!ec && bytes_recvd > 0)
           {
@@ -77,7 +77,7 @@ public:
         });
   }
 
-  void handle_packet(Packet *packet, std::shared_ptr<udp::endpoint> senderEndpoint)
+  void handle_packet(Packet *packet, udp::endpoint senderEndpoint)
   {
     std::cout << "Received packet: " << packet_type_string(packet->type) << std::endl;
     for (auto it = _handlers.begin(); it != _handlers.end(); ++it)
@@ -97,7 +97,7 @@ public:
     std::shared_ptr<std::vector<char>> data = std::make_shared<std::vector<char>>(length);
     memcpy(data->data(), &packet, length);
     _socket.async_send_to(
-        asio::buffer(data->data(), length), *connection.endpoint,
+        asio::buffer(data->data(), length), connection.endpoint,
         [data](std::error_code /*ec*/, std::size_t /*bytes_sent*/)
         {
         });
