@@ -34,12 +34,12 @@ public:
   {
     auto senderEndpoint = std::make_shared<udp::endpoint>();
     _socket.async_receive_from(
-        asio::buffer(_recieveData, max_length), *senderEndpoint,
+        asio::buffer(_receiveData, max_length), *senderEndpoint,
         [this, senderEndpoint](std::error_code ec, std::size_t bytes_recvd)
         {
           if (!ec && bytes_recvd > 0)
           {
-            Packet* packet = (Packet *)_recieveData;
+            Packet* packet = (Packet *)_receiveData;
             handle_packet(packet, senderEndpoint);
           }
           do_receive();
@@ -98,7 +98,7 @@ private:
   {
     max_length = 1024
   };
-  char _recieveData[max_length];
+  char _receiveData[max_length];
   char _sendData[max_length];
 };
 
