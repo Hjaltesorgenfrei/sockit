@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <cassert>
 
-enum PacketType : uint8_t { // Maybe use uint8_t instead of char? And also maybe enum class instead, the names are a bit wonky
+enum PacketType : uint8_t { 
     PACKET_TYPE_CONNECTION_REQUEST = 2,
     PACKET_TYPE_CONNECTION_ACCEPTED,
     PACKET_TYPE_CONNECTION_DENIED,
