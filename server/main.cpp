@@ -12,6 +12,7 @@
 #include <iostream>
 #include <asio.hpp>
 #include <packets.hpp>
+#include <functional>
 
 using asio::ip::udp;
 
@@ -21,12 +22,42 @@ struct Connection
   uint64_t guid;
 };
 
+typedef std::function<bool(Packet*, std::shared_ptr<udp::endpoint>)> handle_func;
+struct Handler {
+  PacketType type;
+  handle_func handler;
+};
+
 class server
 {
 public:
   server(asio::io_context &io_context, short port)
       : _socket(io_context, udp::endpoint(udp::v4(), port))
   {
+    add_handler(PACKET_TYPE_CONNECTION_REQUEST, [this](Packet* packet, std::shared_ptr<udp::endpoint> senderEndpoint) {
+      PacketConnectionRequest *request = (PacketConnectionRequest *)packet;
+        std::cout << "Connection Request: " << request->client_guid << std::endl;
+        std::cout << "Connection Sequence: " << request->connect_sequence << std::endl;
+        PacketConnectionAccepted response;
+        response.client_guid = request->client_guid;
+        response.connect_sequence = request->connect_sequence + 1;
+        
+        // If the guid is already in the list, remove it
+        for (auto it = _connections.begin(); it != _connections.end(); ++it)
+        {
+          if (it->guid == request->client_guid)
+          {
+            _connections.erase(it);
+            break;
+          }
+        }
+        Connection connection;
+        connection.endpoint = senderEndpoint;
+        connection.guid = request->client_guid;
+        _connections.push_back(connection);
+        do_send(sizeof(PacketConnectionAccepted), response, connection);
+        return true;
+    });
     do_receive();
   }
 
@@ -49,33 +80,14 @@ public:
   void handle_packet(Packet *packet, std::shared_ptr<udp::endpoint> senderEndpoint)
   {
     std::cout << "Received packet: " << packet_type_string(packet->type) << std::endl;
-    switch (packet->type)
+    for (auto it = _handlers.begin(); it != _handlers.end(); ++it)
     {
-      case PACKET_TYPE_CONNECTION_REQUEST:
+      if (it->type == packet->type)
       {
-        PacketConnectionRequest *request = (PacketConnectionRequest *)packet;
-        std::cout << "Connection Request: " << request->client_guid << std::endl;
-        std::cout << "Connection Sequence: " << request->connect_sequence << std::endl;
-        PacketConnectionAccepted response;
-        response.client_guid = request->client_guid;
-        response.connect_sequence = request->connect_sequence + 1;
-        
-        // If the guid is already in the list, remove it
-        for (auto it = _connections.begin(); it != _connections.end(); ++it)
+        if (it->handler(packet, senderEndpoint))
         {
-          if (it->guid == request->client_guid)
-          {
-            _connections.erase(it);
-            break;
-          }
+          break;
         }
-        Connection connection;
-        connection.endpoint = senderEndpoint;
-        connection.guid = request->client_guid;
-        _connections.push_back(connection);
-        do_send(sizeof(PacketConnectionAccepted), response, connection);
-        
-        break;
       }
     }
   }
@@ -92,6 +104,11 @@ public:
   }
 
 private:
+  void add_handler(PacketType type, handle_func handler)
+  {
+    _handlers.push_back({ type, handler });
+  }
+
   udp::socket _socket;
   std::vector<Connection> _connections;
   enum
@@ -100,6 +117,7 @@ private:
   };
   char _receiveData[max_length];
   char _sendData[max_length];
+  std::vector<Handler> _handlers;
 };
 
 int main(int argc, char *argv[])
