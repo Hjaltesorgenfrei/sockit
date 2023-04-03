@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <cassert>
 
 enum PacketType : uint8_t { // Maybe use uint8_t instead of char? And also maybe enum class instead, the names are a bit wonky
     PACKET_TYPE_CONNECTION_REQUEST = 2,
