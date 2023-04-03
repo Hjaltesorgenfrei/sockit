@@ -26,7 +26,7 @@ const char * packet_type_string( uint8_t packet_type )
 struct Packet {
     PacketType type;
 };
-
+#pragma pack(pop)
 
 #pragma pack(push, 1)
 struct PacketConnectionRequest : Packet {
