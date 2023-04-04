@@ -32,7 +32,7 @@ class server
 {
 public:
   server(asio::io_context &io_context, short port)
-      : _socket(io_context, udp::endpoint(udp::v4(), port)), heartbeat_timer(io_context, std::chrono::seconds(5))
+      : _socket(io_context, udp::endpoint(udp::v6(), port)), heartbeat_timer(io_context, std::chrono::seconds(heartbeat_interval))
   {
     add_handler(PACKET_TYPE_CONNECTION_REQUEST, [this](Packet* packet, udp::endpoint senderEndpoint) {
       PacketConnectionRequest *request = (PacketConnectionRequest *)packet;
@@ -74,22 +74,26 @@ public:
           do_send(sizeof(PacketHeartbeat), heartbeat, *it);
         }
       }
-      heartbeat_timer.expires_at(heartbeat_timer.expiry() + std::chrono::seconds(5));
+      heartbeat_timer.expires_at(heartbeat_timer.expiry() + std::chrono::seconds(heartbeat_interval));
       heart_beat();
     });
   }
 
   void do_receive()
   {
-    udp::endpoint senderEndpoint;
+    std::shared_ptr<udp::endpoint> senderEndpoint = std::make_shared<udp::endpoint>();
     _socket.async_receive_from(
-        asio::buffer(_receiveData, max_length), senderEndpoint,
-        [this, &senderEndpoint](std::error_code ec, std::size_t bytes_recvd)
+        asio::buffer(_receiveData, max_length), *senderEndpoint,
+        [this, senderEndpoint](std::error_code ec, std::size_t bytes_recvd)
         {
+          std::cout << "Sender: " << *senderEndpoint << std::endl;
           if (!ec && bytes_recvd > 0)
           {
             Packet* packet = (Packet *)_receiveData;
-            handle_packet(packet, senderEndpoint);
+            handle_packet(packet, *senderEndpoint);
+          }
+          else {
+            std::cout << "Error: " << ec.message() << std::endl;
           }
           do_receive();
         });
@@ -110,14 +114,19 @@ public:
     }
   }
 
-  void do_send(std::size_t length, Packet &packet, Connection& connection)
+  void do_send(std::size_t length, Packet &packet, Connection connection)
   {
     std::shared_ptr<std::vector<char>> data = std::make_shared<std::vector<char>>(length);
     memcpy(data->data(), &packet, length);
     _socket.async_send_to(
         asio::buffer(data->data(), length), connection.endpoint,
-        [data](std::error_code /*ec*/, std::size_t /*bytes_sent*/)
+        [data, connection](std::error_code ec, std::size_t /*bytes_sent*/)
         {
+          if (ec)
+          {
+            std::cout << "Error Sending: " << ec.message() << std::endl;
+            std::cout << "Connection Endpoint: " << connection.endpoint << std::endl;
+          }
         });
   }
 
@@ -132,7 +141,8 @@ private:
   asio::steady_timer heartbeat_timer;
   enum
   {
-    max_length = 1024
+    max_length = 1024,
+    heartbeat_interval = 5,
   };
   char _receiveData[max_length];
   char _sendData[max_length];

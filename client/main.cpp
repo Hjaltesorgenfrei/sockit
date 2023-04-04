@@ -32,12 +32,21 @@ public:
     connect();
   }
 
+  uint64_t rand_uint64_slow(void) {
+    srand ( time(NULL) );
+    uint64_t r = 0;
+    for (int i=0; i<64; i++) {
+      r = r*2 + rand()%2;
+    }
+    return r;
+  }
+
   void connect()
   {
     std::shared_ptr<std::vector<char>> requestBuffer = std::make_shared<std::vector<char>>(max_length);
     char testBuffer[1024];
     PacketConnectionRequest packet;
-    packet.client_guid = 0xDEADBEEF;
+    packet.client_guid = rand_uint64_slow();
     packet.connect_sequence = 1;
 
     std::memcpy(requestBuffer->data(), &packet, sizeof(PacketConnectionRequest));
@@ -51,6 +60,7 @@ public:
       }
       else {
         std::cout << "Sent packet" << std::endl;
+        std::cout << "Local endpoint: " << _socket.local_endpoint() << std::endl;
         receive();
       } });
   }
@@ -99,7 +109,7 @@ int main(int argc, char *argv[])
     {
       std::cerr << "Usage: blocking_udp_echo_client <host> <port>\n";
       // return 1;
-      host = "localhost";
+      host = "127.0.0.1";
       service = "5000";
     }
     else
