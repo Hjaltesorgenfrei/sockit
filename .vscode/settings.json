@@ -85,6 +85,18 @@
         "xtr1common": "cpp",
         "xtree": "cpp",
         "xutility": "cpp",
-        "*.ipp": "cpp"
+        "*.ipp": "cpp",
+        "*.tcc": "cpp",
+        "complex": "cpp",
+        "cwctype": "cpp",
+        "unordered_set": "cpp",
+        "memory_resource": "cpp",
+        "string_view": "cpp",
+        "numbers": "cpp",
+        "semaphore": "cpp",
+        "cfenv": "cpp",
+        "typeindex": "cpp",
+        "valarray": "cpp",
+        "variant": "cpp"
     }
 }

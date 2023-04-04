@@ -32,7 +32,7 @@ class server
 {
 public:
   server(asio::io_context &io_context, short port)
-      : _socket(io_context, udp::endpoint(udp::v4(), port))
+      : _socket(io_context, udp::endpoint(udp::v4(), port)), heartbeat_timer(io_context, std::chrono::seconds(5))
   {
     add_handler(PACKET_TYPE_CONNECTION_REQUEST, [this](Packet* packet, udp::endpoint senderEndpoint) {
       PacketConnectionRequest *request = (PacketConnectionRequest *)packet;
@@ -58,7 +58,25 @@ public:
         do_send(sizeof(PacketConnectionAccepted), response, connection);
         return true;
     });
+    heart_beat();
     do_receive();
+  }
+
+  void heart_beat() {
+    // Make sure we send a heartbeat every 5 seconds
+    heartbeat_timer.async_wait([this](std::error_code ec) {
+      std::cout << "Sending heartbeat" << std::endl;
+      if (!ec)
+      {
+        PacketHeartbeat heartbeat;
+        for (auto it = _connections.begin(); it != _connections.end(); ++it)
+        {
+          do_send(sizeof(PacketHeartbeat), heartbeat, *it);
+        }
+      }
+      heartbeat_timer.expires_at(heartbeat_timer.expiry() + std::chrono::seconds(5));
+      heart_beat();
+    });
   }
 
   void do_receive()
@@ -111,6 +129,7 @@ private:
 
   udp::socket _socket;
   std::vector<Connection> _connections;
+  asio::steady_timer heartbeat_timer;
   enum
   {
     max_length = 1024

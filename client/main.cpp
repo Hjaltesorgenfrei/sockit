@@ -21,18 +21,19 @@ enum
   max_length = 1024
 };
 
-
-class client {
+class client
+{
 public:
-
-  client(std::string host, std::string service, asio::io_context& io_context) : _socket(io_context, udp::endpoint(udp::v4(), 0)) {
+  client(std::string host, std::string service, asio::io_context &io_context) : _socket(io_context, udp::endpoint(udp::v4(), 0))
+  {
     udp::resolver resolver(io_context);
     udp::resolver::results_type endpoints = resolver.resolve(udp::v4(), host, service);
     _endpoint = *endpoints.begin();
     connect();
   }
 
-  void connect() {
+  void connect()
+  {
     std::shared_ptr<std::vector<char>> requestBuffer = std::make_shared<std::vector<char>>(max_length);
     char testBuffer[1024];
     PacketConnectionRequest packet;
@@ -44,21 +45,24 @@ public:
     auto request_length = sizeof(PacketConnectionRequest);
 
     _socket.async_send_to(asio::buffer(*requestBuffer), _endpoint, [requestBuffer, this](std::error_code ec, std::size_t bytes_sent)
-    {
+                          {
       if (ec) {
         std::cout << "Error sending packet: " << ec.message() << std::endl;
       }
       else {
         std::cout << "Sent packet" << std::endl;
         receive();
-      }
-    });
+      } });
   }
 
-  void receive() {
-      std::shared_ptr<std::vector<char>> responseBuffer = std::make_shared<std::vector<char>>(max_length);
-      _socket.async_receive_from(asio::buffer(*responseBuffer), _endpoint, [responseBuffer](std::error_code ec, std::size_t bytes_recvd)
-                          {
+  void receive()
+  {
+    std::shared_ptr<std::vector<char>> responseBuffer = std::make_shared<std::vector<char>>(max_length);
+    _socket.async_receive_from(
+        asio::buffer(*responseBuffer),
+        _endpoint,
+        [this, responseBuffer](std::error_code ec, std::size_t bytes_recvd)
+        {
         if (ec) {
           std::cout << "Error receiving packet: " << ec.message() << std::endl;
         }
@@ -75,14 +79,15 @@ public:
             break;
           }
           }
-        } });
+        } 
+        receive();
+        });
   }
 
-private: 
+private:
   udp::socket _socket;
   udp::endpoint _endpoint;
 };
-
 
 int main(int argc, char *argv[])
 {
@@ -97,7 +102,8 @@ int main(int argc, char *argv[])
       host = "localhost";
       service = "5000";
     }
-    else {
+    else
+    {
       host = argv[1];
       service = argv[2];
     }
