@@ -1,178 +1,105 @@
-//
-// async_udp_echo_server.cpp
-// ~~~~~~~~~~~~~~~~~~~~~~~~~
-//
-// Copyright (c) 2003-2021 Christopher M. Kohlhoff (chris at kohlhoff dot com)
-//
-// Distributed under the Boost Software License, Version 1.0. (See accompanying
-// file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
-//
+/*
+    Yojimbo Server Example (insecure)
 
-#include <cstdlib>
-#include <iostream>
-#include <asio.hpp>
-#include <packets.hpp>
-#include <functional>
+    Copyright © 2016 - 2019, The Network Protocol Company, Inc.
 
-using asio::ip::udp;
+    Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
 
-struct Connection
+        1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+        2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer 
+           in the documentation and/or other materials provided with the distribution.
+
+        3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived 
+           from this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, 
+    INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE 
+    DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
+    SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+    WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+    USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+#include "yojimbo.h"
+#include <signal.h>
+#include <time.h>
+
+#include "shared.h"
+
+using namespace yojimbo;
+
+static volatile int quit = 0;
+
+void interrupt_handler( int /*dummy*/ )
 {
-  udp::endpoint endpoint;
-  uint64_t guid;
-};
+    quit = 1;
+}
 
-typedef std::function<bool(Packet*, udp::endpoint)> handle_func;
-struct Handler {
-  PacketType type;
-  handle_func handler;
-};
-
-class server
+int ServerMain()
 {
-public:
-  server(asio::io_context &io_context, short port)
-      : _socket(io_context, udp::endpoint(udp::v6(), port)), heartbeat_timer(io_context, std::chrono::seconds(heartbeat_interval))
-  {
-    add_handler(PACKET_TYPE_CONNECTION_REQUEST, [this](Packet* packet, udp::endpoint senderEndpoint) {
-      PacketConnectionRequest *request = (PacketConnectionRequest *)packet;
-        std::cout << "Connection Request: " << request->client_guid << std::endl;
-        std::cout << "Connection Sequence: " << request->connect_sequence << std::endl;
-        PacketConnectionAccepted response;
-        response.client_guid = request->client_guid;
-        response.connect_sequence = request->connect_sequence + 1;
-        
-        // If the guid is already in the list, remove it
-        for (auto it = _connections.begin(); it != _connections.end(); ++it)
-        {
-          if (it->guid == request->client_guid)
-          {
-            _connections.erase(it);
+    printf( "started server on port %d (insecure)\n", ServerPort );
+
+    double time = 100.0;
+
+    ClientServerConfig config;
+
+    uint8_t privateKey[KeyBytes];
+    memset( privateKey, 0, KeyBytes );
+
+    Server server( GetDefaultAllocator(), privateKey, Address( "127.0.0.1", ServerPort ), config, adapter, time );
+
+    server.Start( MaxClients );
+
+    char addressString[256];
+    server.GetAddress().ToString( addressString, sizeof( addressString ) );
+    printf( "server address is %s\n", addressString );
+
+    const double deltaTime = 0.01f;
+
+    signal( SIGINT, interrupt_handler );    
+
+    while ( !quit )
+    {
+        server.SendPackets();
+
+        server.ReceivePackets();
+
+        time += deltaTime;
+
+        server.AdvanceTime( time );
+
+        if ( !server.IsRunning() )
             break;
-          }
-        }
-        Connection connection;
-        connection.endpoint = senderEndpoint;
-        connection.guid = request->client_guid;
-        _connections.push_back(connection);
-        do_send(sizeof(PacketConnectionAccepted), response, connection);
-        return true;
-    });
-    heart_beat();
-    do_receive();
-  }
 
-  void heart_beat() {
-    // Make sure we send a heartbeat every 5 seconds
-    heartbeat_timer.async_wait([this](std::error_code ec) {
-      std::cout << "Sending heartbeat" << std::endl;
-      if (!ec)
-      {
-        PacketHeartbeat heartbeat;
-        for (auto it = _connections.begin(); it != _connections.end(); ++it)
-        {
-          do_send(sizeof(PacketHeartbeat), heartbeat, *it);
-        }
-      }
-      heartbeat_timer.expires_at(heartbeat_timer.expiry() + std::chrono::seconds(heartbeat_interval));
-      heart_beat();
-    });
-  }
-
-  void do_receive()
-  {
-    std::shared_ptr<udp::endpoint> senderEndpoint = std::make_shared<udp::endpoint>();
-    _socket.async_receive_from(
-        asio::buffer(_receiveData, max_length), *senderEndpoint,
-        [this, senderEndpoint](std::error_code ec, std::size_t bytes_recvd)
-        {
-          std::cout << "Sender: " << *senderEndpoint << std::endl;
-          if (!ec && bytes_recvd > 0)
-          {
-            Packet* packet = (Packet *)_receiveData;
-            handle_packet(packet, *senderEndpoint);
-          }
-          else {
-            std::cout << "Error: " << ec.message() << std::endl;
-          }
-          do_receive();
-        });
-  }
-
-  void handle_packet(Packet *packet, udp::endpoint senderEndpoint)
-  {
-    std::cout << "Received packet: " << packet_type_string(packet->type) << std::endl;
-    for (auto it = _handlers.begin(); it != _handlers.end(); ++it)
-    {
-      if (it->type == packet->type)
-      {
-        if (it->handler(packet, senderEndpoint))
-        {
-          break;
-        }
-      }
+        yojimbo_sleep( deltaTime );
     }
-  }
 
-  void do_send(std::size_t length, Packet &packet, Connection connection)
-  {
-    std::shared_ptr<std::vector<char>> data = std::make_shared<std::vector<char>>(length);
-    memcpy(data->data(), &packet, length);
-    _socket.async_send_to(
-        asio::buffer(data->data(), length), connection.endpoint,
-        [data, connection](std::error_code ec, std::size_t /*bytes_sent*/)
-        {
-          if (ec)
-          {
-            std::cout << "Error Sending: " << ec.message() << std::endl;
-            std::cout << "Connection Endpoint: " << connection.endpoint << std::endl;
-          }
-        });
-  }
+    server.Stop();
 
-private:
-  void add_handler(PacketType type, handle_func handler)
-  {
-    _handlers.push_back({ type, handler });
-  }
+    return 0;
+}
 
-  udp::socket _socket;
-  std::vector<Connection> _connections;
-  asio::steady_timer heartbeat_timer;
-  enum
-  {
-    max_length = 1024,
-    heartbeat_interval = 5,
-  };
-  char _receiveData[max_length];
-  char _sendData[max_length];
-  std::vector<Handler> _handlers;
-};
-
-int main(int argc, char *argv[])
+int main()
 {
-  try
-  {
-    const char * port = "5000";
-    if (argc != 2)
+    printf( "\n" );
+
+    if ( !InitializeYojimbo() )
     {
-      std::cerr << "Usage: async_udp_echo_server <port>\n";
-    }
-    else {
-      port = argv[1];
+        printf( "error: failed to initialize Yojimbo!\n" );
+        return 1;
     }
 
-    asio::io_context io_context;
+    yojimbo_log_level( YOJIMBO_LOG_LEVEL_INFO );
 
-    server s(io_context, std::atoi(port));
+    srand( (unsigned int) time( NULL ) );
 
-    io_context.run();
-  }
-  catch (std::exception &e)
-  {
-    std::cerr << "Exception: " << e.what() << "\n";
-  }
+    int result = ServerMain();
 
-  std::cout << "Server Exited" << std::endl;
-  return 0;
+    ShutdownYojimbo();
+
+    printf( "\n" );
+
+    return result;
 }

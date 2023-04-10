@@ -1,133 +1,126 @@
-//
-// blocking_udp_echo_client.cpp
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-//
-// Copyright (c) 2003-2021 Christopher M. Kohlhoff (chris at kohlhoff dot com)
-//
-// Distributed under the Boost Software License, Version 1.0. (See accompanying
-// file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
-//
+/*
+    Yojimbo Client Example (insecure)
 
-#include <cstdlib>
-#include <cstring>
-#include <iostream>
-#include <asio.hpp>
-#include <packets.hpp>
+    Copyright © 2016 - 2019, The Network Protocol Company, Inc.
 
-using asio::ip::udp;
+    Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
 
-enum
+        1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+        2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer 
+           in the documentation and/or other materials provided with the distribution.
+
+        3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived 
+           from this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, 
+    INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE 
+    DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
+    SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+    WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+    USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+#include "yojimbo.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <inttypes.h>
+#include <time.h>
+#include <signal.h>
+#include "shared.h"
+
+using namespace yojimbo;
+
+static volatile int quit = 0;
+
+void interrupt_handler( int /*dummy*/ )
 {
-  max_length = 1024
-};
+    quit = 1;
+}
 
-class client
-{
-public:
-  client(std::string host, std::string service, asio::io_context &io_context) : _socket(io_context, udp::endpoint(udp::v4(), 0))
-  {
-    udp::resolver resolver(io_context);
-    udp::resolver::results_type endpoints = resolver.resolve(udp::v4(), host, service);
-    _endpoint = *endpoints.begin();
-    connect();
-  }
+int ClientMain( int argc, char * argv[] )
+{   
+    printf( "\nconnecting client (insecure)\n" );
 
-  uint64_t rand_uint64_slow(void) {
-    srand ( time(NULL) );
-    uint64_t r = 0;
-    for (int i=0; i<64; i++) {
-      r = r*2 + rand()%2;
-    }
-    return r;
-  }
+    double time = 100.0;
 
-  void connect()
-  {
-    std::shared_ptr<std::vector<char>> requestBuffer = std::make_shared<std::vector<char>>(max_length);
-    char testBuffer[1024];
-    PacketConnectionRequest packet;
-    packet.client_guid = rand_uint64_slow();
-    packet.connect_sequence = 1;
+    uint64_t clientId = 0;
+    random_bytes( (uint8_t*) &clientId, 8 );
+    printf( "client id is %.16" PRIx64 "\n", clientId );
 
-    std::memcpy(requestBuffer->data(), &packet, sizeof(PacketConnectionRequest));
-    std::memcpy(testBuffer, &packet, sizeof(PacketConnectionRequest));
-    auto request_length = sizeof(PacketConnectionRequest);
+    ClientServerConfig config;
 
-    _socket.async_send_to(asio::buffer(*requestBuffer), _endpoint, [requestBuffer, this](std::error_code ec, std::size_t bytes_sent)
-                          {
-      if (ec) {
-        std::cout << "Error sending packet: " << ec.message() << std::endl;
-      }
-      else {
-        std::cout << "Sent packet" << std::endl;
-        std::cout << "Local endpoint: " << _socket.local_endpoint() << std::endl;
-        receive();
-      } });
-  }
+    Client client( GetDefaultAllocator(), Address("0.0.0.0"), config, adapter, time );
 
-  void receive()
-  {
-    std::shared_ptr<std::vector<char>> responseBuffer = std::make_shared<std::vector<char>>(max_length);
-    _socket.async_receive_from(
-        asio::buffer(*responseBuffer),
-        _endpoint,
-        [this, responseBuffer](std::error_code ec, std::size_t bytes_recvd)
+    Address serverAddress( "127.0.0.1", ServerPort );
+
+    if ( argc == 2 )
+    {
+        Address commandLineAddress( argv[1] );
+        if ( commandLineAddress.IsValid() )
         {
-        if (ec) {
-          std::cout << "Error receiving packet: " << ec.message() << std::endl;
+            if ( commandLineAddress.GetPort() == 0 )
+                commandLineAddress.SetPort( ServerPort );
+            serverAddress = commandLineAddress;
         }
-        else {
-          Packet* packet = (Packet*)responseBuffer->data();
-          std::cout << "Received packet: " << packet_type_string(packet->type) << std::endl;
-          switch (packet->type)
-          {
-          case PACKET_TYPE_CONNECTION_ACCEPTED:
-          {
-            PacketConnectionAccepted *response = (PacketConnectionAccepted *)packet;
-            std::cout << "Connection Accepted: " << response->client_guid << std::endl;
-            std::cout << "Connection Sequence: " << response->connect_sequence << std::endl;
+    }
+
+    uint8_t privateKey[KeyBytes];
+    memset( privateKey, 0, KeyBytes );
+
+    client.InsecureConnect( privateKey, clientId, serverAddress );
+
+    char addressString[256];
+    client.GetAddress().ToString( addressString, sizeof( addressString ) );
+    printf( "client address is %s\n", addressString );
+
+    const double deltaTime = 0.01f;
+
+    signal( SIGINT, interrupt_handler );
+
+    while ( !quit )
+    {
+        client.SendPackets();
+
+        client.ReceivePackets();
+
+        if ( client.IsDisconnected() )
             break;
-          }
-          }
-        } 
-        receive();
-        });
-  }
+     
+        time += deltaTime;
 
-private:
-  udp::socket _socket;
-  udp::endpoint _endpoint;
-};
+        client.AdvanceTime( time );
 
-int main(int argc, char *argv[])
+        if ( client.ConnectionFailed() )
+            break;
+
+        yojimbo_sleep( deltaTime );
+    }
+
+    client.Disconnect();
+
+    return 0;
+}
+
+int main( int argc, char * argv[] )
 {
-  try
-  {
-    std::string host;
-    std::string service;
-    if (argc != 3)
+    if ( !InitializeYojimbo() )
     {
-      std::cerr << "Usage: blocking_udp_echo_client <host> <port>\n";
-      // return 1;
-      host = "127.0.0.1";
-      service = "5000";
-    }
-    else
-    {
-      host = argv[1];
-      service = argv[2];
+        printf( "error: failed to initialize Yojimbo!\n" );
+        return 1;
     }
 
-    asio::io_context io_context;
+    yojimbo_log_level( YOJIMBO_LOG_LEVEL_INFO );
 
-    client c(host, service, io_context);
+    srand( (unsigned int) time( NULL ) );
 
-    io_context.run();
-  }
-  catch (std::exception &e)
-  {
-    std::cerr << "Exception: " << e.what() << "\n";
-  }
+    int result = ClientMain( argc, argv );
 
-  return 0;
+    ShutdownYojimbo();
+
+    printf( "\n" );
+
+    return result;
 }
