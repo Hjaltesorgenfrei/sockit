@@ -39,29 +39,33 @@ void interrupt_handler( int /*dummy*/ )
 
 void PrinterServerMessages(Server& server) 
 {
-    int clientId = 0; // TODO: Need to figure out where to get this.
-    while (auto message = server.ReceiveMessage(clientId, 0)) {
-
-        switch ( message->GetType() )
-        {
-            case TEST_MESSAGE:
-            {
-                TestMessage * testMessage = (TestMessage*) message;
-                printf("TestMessage\n");
-            }
-            break;
-
-            case TEST_BLOCK_MESSAGE:
-            {
-                TestBlockMessage * blockMessage = (TestBlockMessage*) message;
-                const int blockSize = blockMessage->GetBlockSize();
-                const uint8_t * blockData = blockMessage->GetBlockData();
-                printf("TestBlockMessage with %d blocks\n", blockSize);
-            }
-            break;
+    for (int clientId = 0; clientId < MaxClients; clientId++) {
+        if (!server.IsClientConnected(clientId)) {
+            continue;
         }
 
-        server.ReleaseMessage(0, message);
+        while (auto message = server.ReceiveMessage(clientId, 0)) {
+            switch ( message->GetType() )
+            {
+                case TEST_MESSAGE:
+                {
+                    TestMessage * testMessage = (TestMessage*) message;
+                    printf("TestMessage\n");
+                }
+                break;
+
+                case TEST_BLOCK_MESSAGE:
+                {
+                    TestBlockMessage * blockMessage = (TestBlockMessage*) message;
+                    const int blockSize = blockMessage->GetBlockSize();
+                    const uint8_t * blockData = blockMessage->GetBlockData();
+                    printf("TestBlockMessage with %d blocks\n", blockSize);
+                }
+                break;
+            }
+
+            server.ReleaseMessage(clientId, message);
+        }
     }
 }
 
