@@ -22,7 +22,7 @@
     USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "yojimbo.h"
+#include <yojimbo.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -38,6 +38,33 @@ static volatile int quit = 0;
 void interrupt_handler( int /*dummy*/ )
 {
     quit = 1;
+}
+
+void SendClientToServerMessages( Client & client, int numMessagesToSend, int channelIndex = 0 )
+{
+    for ( int i = 0; i < numMessagesToSend; ++i )
+    {
+        if ( !client.CanSendMessage( channelIndex ) )
+            break;
+
+        if ( rand() % 10 )
+        {
+            TestMessage * message = (TestMessage*) client.CreateMessage( TEST_MESSAGE );
+            message->sequence = i;
+            client.SendMessage( channelIndex, message );
+        }
+        else
+        {
+            TestBlockMessage * message = (TestBlockMessage*) client.CreateMessage( TEST_BLOCK_MESSAGE );
+            message->sequence = i;
+            const int blockSize = 1 + ( ( i * 901 ) % 1001 );
+            uint8_t * blockData = client.AllocateBlock( blockSize );
+            for ( int j = 0; j < blockSize; ++j )
+                blockData[j] = i + j;
+            client.AttachBlockToMessage( message, blockData, blockSize );
+            client.SendMessage( channelIndex, message );
+        }
+    }
 }
 
 int ClientMain( int argc, char * argv[] )
@@ -79,6 +106,7 @@ int ClientMain( int argc, char * argv[] )
     const double deltaTime = 0.01f;
 
     signal( SIGINT, interrupt_handler );
+    SendClientToServerMessages(client, 10);
 
     while ( !quit )
     {

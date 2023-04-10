@@ -3,4 +3,4 @@ https://codereview.stackexchange.com/questions/124141/c-udp-server-for-a-game
 Create some sort of session that keeps track of who is connected.
 
 Use Machine HWID to make it possible to reconnect to the game. 
-But hide it behind a compile flag, as most of the time I will be testing locally and therefore want mutiple connections.
+But hide it behind a compile flag, as most of the time I will be testing locally and therefore want multiple connections.

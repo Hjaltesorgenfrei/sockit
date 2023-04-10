@@ -22,7 +22,7 @@
     USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "yojimbo.h"
+#include <yojimbo.h>
 #include <signal.h>
 #include <time.h>
 
@@ -35,6 +35,34 @@ static volatile int quit = 0;
 void interrupt_handler( int /*dummy*/ )
 {
     quit = 1;
+}
+
+void PrinterServerMessages(Server& server) 
+{
+    int clientId = 0; // TODO: Need to figure out where to get this.
+    while (auto message = server.ReceiveMessage(clientId, 0)) {
+
+        switch ( message->GetType() )
+        {
+            case TEST_MESSAGE:
+            {
+                TestMessage * testMessage = (TestMessage*) message;
+                printf("TestMessage\n");
+            }
+            break;
+
+            case TEST_BLOCK_MESSAGE:
+            {
+                TestBlockMessage * blockMessage = (TestBlockMessage*) message;
+                const int blockSize = blockMessage->GetBlockSize();
+                const uint8_t * blockData = blockMessage->GetBlockData();
+                printf("TestBlockMessage with %d blocks\n", blockSize);
+            }
+            break;
+        }
+
+        server.ReleaseMessage(0, message);
+    }
 }
 
 int ServerMain()
@@ -65,6 +93,8 @@ int ServerMain()
         server.SendPackets();
 
         server.ReceivePackets();
+
+        PrinterServerMessages(server);
 
         time += deltaTime;
 

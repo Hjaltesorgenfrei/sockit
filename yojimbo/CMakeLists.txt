@@ -11,6 +11,7 @@ add_library(yojimbo
         yojimbo/yojimbo.cpp yojimbo/yojimbo.h
         yojimbo/netcode.io/netcode.c yojimbo/netcode.io/netcode.h
         yojimbo/reliable.io/reliable.c yojimbo/reliable.io/reliable.h
+        yojimbo/certs.c yojimbo/certs.h
         yojimbo/tlsf/tlsf.c yojimbo/tlsf/tlsf.c)
 target_link_libraries(yojimbo
     PRIVATE MbedTLS::mbedtls
